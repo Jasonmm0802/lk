@@ -8,7 +8,7 @@ app = Flask(__name__)
 app.secret_key = "pico_w_ry_water_quality_2026"
 
 # ==========================
-# 安全性與存儲
+# 安全性與存儲 (自動建立必要資料夾與檔案)
 # ==========================
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
@@ -18,10 +18,21 @@ USERS_FILE = "users.json"
 BOATS_FILE = "boats.json"
 HISTORY_DIR = "history"
 
-if not os.path.exists(HISTORY_DIR):
-    os.makedirs(HISTORY_DIR)
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
+def init_storage():
+    # 建立資料夾
+    for folder in [HISTORY_DIR, app.config['UPLOAD_FOLDER']]:
+        if not os.path.exists(folder):
+            os.makedirs(folder, exist_ok=True)
+            print(f"已建立資料夾: {folder}")
+    
+    # 建立初始 JSON 檔案 (若不存在)
+    for file in [USERS_FILE, BOATS_FILE]:
+        if not os.path.exists(file):
+            with open(file, "w", encoding="utf-8") as f:
+                json.dump([], f)
+            print(f"已建立初始檔案: {file}")
+
+init_storage()
 
 # ==========================
 # 資料輔助函式
