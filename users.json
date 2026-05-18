@@ -1,0 +1,34 @@
+[
+  {
+    "username": "admin",
+    "password": "admin123",
+    "role": "admin",
+    "avatar": "/uploads/avatars/admin.png",
+    "balance": 1.0,
+    "owned_boats": [],
+    "email": "admin@example.com",
+    "friends": []
+  },
+  {
+    "username": "user",
+    "password": "user123",
+    "role": "user",
+    "avatar": "/uploads/avatars/default.png",
+    "balance": 20.0,
+    "owned_boats": [
+      "10.231.1.5"
+    ],
+    "email": "user@example.com",
+    "friends": []
+  },
+  {
+    "username": "guest",
+    "password": "guest123",
+    "role": "guest",
+    "avatar": "/uploads/avatars/default.png",
+    "balance": 0.0,
+    "owned_boats": [],
+    "email": "",
+    "friends": []
+  }
+]
