@@ -8,7 +8,7 @@ app = Flask(__name__)
 app.secret_key = "pico_w_ry_water_quality_2026"
 
 # ==========================
-# 安全性與存儲 (自動建立必要資料夾與檔案)
+# 安全性與存儲
 # ==========================
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
@@ -18,21 +18,10 @@ USERS_FILE = "users.json"
 BOATS_FILE = "boats.json"
 HISTORY_DIR = "history"
 
-def init_storage():
-    # 建立資料夾
-    for folder in [HISTORY_DIR, app.config['UPLOAD_FOLDER']]:
-        if not os.path.exists(folder):
-            os.makedirs(folder, exist_ok=True)
-            print(f"已建立資料夾: {folder}")
-    
-    # 建立初始 JSON 檔案 (若不存在)
-    for file in [USERS_FILE, BOATS_FILE]:
-        if not os.path.exists(file):
-            with open(file, "w", encoding="utf-8") as f:
-                json.dump([], f)
-            print(f"已建立初始檔案: {file}")
-
-init_storage()
+if not os.path.exists(HISTORY_DIR):
+    os.makedirs(HISTORY_DIR)
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
 # ==========================
 # 資料輔助函式
@@ -64,7 +53,7 @@ def get_boat_state(ip):
         history = load_json(get_history_file(ip))
         boat_states[ip] = {
             "mode": "manual", "move": "stop", "pump": False,
-            "lat": None, "lng": None, "gps_valid": False,
+            "lat": None, "lng": None, "gps_valid": False, "tds": 0,
             "time": None, "track": history, "target_pos": None,      
             "cruise_path": [], "start_pos": None        
         }
@@ -494,7 +483,10 @@ def control_boat(ip):
 <button class="btn btn-ctrl" onclick="sendMove('left_rotate')">⟲</button><button class="btn btn-ctrl" onclick="sendMove('backward')">▼</button><button class="btn btn-ctrl" onclick="sendMove('right_rotate')">⟳</button></div>
 <button id="pumpBtn" class="btn btn-secondary" style="width:100%; margin-top:1rem; padding:1.2rem; font-size:1.1rem; border-radius:1rem;" onmousedown="setPump(true)" onmouseup="setPump(false)" ontouchstart="t_start(event)" ontouchend="t_end(event)">🌊 點擊採水 (按住)</button></div>
 {% endif %}
-<div class="card"><h2>📊 傳感器與 GPS 數據</h2><div class="data-row"><span class="data-label">座標位置</span><span class="data-value" id="pos_text">--</span></div><div class="data-row"><span class="data-label">GPS 鎖定</span><span id="gps_status">--</span></div>
+<div class="card"><h2>📊 傳感器與 GPS 數據</h2>
+<div class="data-row"><span class="data-label">TDS 水質 (ppm)</span><span id="tds_value" style="font-weight:700; color:var(--secondary);">0.0</span></div>
+<div class="data-row"><span class="data-label">座標位置</span><span class="data-value" id="pos_text">--</span></div>
+<div class="data-row"><span class="data-label">GPS 鎖定</span><span id="gps_status">--</span></div>
 <div class="data-row"><span class="data-label">移動指令</span><span id="move_status">--</span></div><div class="data-row"><span class="data-label">歷史紀錄點</span><span id="track_count">0 點</span></div>
 {% if role == 'admin' %}<button onclick="clearHistory()" class="btn btn-danger" style="width:100%; margin-top:1rem; font-size:0.8rem; background:none; color:var(--danger); border:1px solid var(--danger);">清除軌跡檔案</button>{% endif %}
 </div></div><div class="card" style="padding:0; overflow:hidden;"><div id="map"></div></div></div></div>
@@ -580,6 +572,7 @@ def control_boat(ip):
         fetch(`/api/data/${BOAT_IP}`).then(r => r.json()).then(data => {
             document.getElementById('move_status').innerText = data.move.toUpperCase();
             document.getElementById('gps_status').innerText = data.gps_valid ? '✅ 已鎖定' : '❌ 搜尋中';
+            document.getElementById('tds_value').innerText = data.tds ? data.tds.toFixed(1) : '0.0';
             document.getElementById('pos_text').innerText = data.lat ? `${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}` : '--';
             document.getElementById('track_count').innerText = data.track.length + ' 點';
             if(data.lat && data.lng) {
@@ -801,14 +794,9 @@ def api_clear_history(ip):
     if ip in boat_states: boat_states[ip]["track"] = []
     return jsonify({"status": "ok"})
 
-def get_client_ip():
-    if request.headers.get('X-Forwarded-For'):
-        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    return request.remote_addr
-
 @app.route("/state", methods=["GET"])
 def pico_state():
-    boat_ip = get_client_ip()
+    boat_ip = request.remote_addr
     ensure_boat_exists(boat_ip)
     state = get_boat_state(boat_ip)
     return jsonify({
@@ -818,7 +806,7 @@ def pico_state():
 
 @app.route("/upload", methods=["POST"])
 def pico_upload():
-    boat_ip = get_client_ip()
+    boat_ip = request.remote_addr
     ensure_boat_exists(boat_ip)
     data = request.json
     state = get_boat_state(boat_ip)
@@ -826,7 +814,12 @@ def pico_upload():
     # 更新 GPS 與其他狀態
     lat, lng = data.get("lat"), data.get("lng")
     gps_valid = data.get("gps_valid", False)
-    state.update({"lat": lat, "lng": lng, "gps_valid": gps_valid, "time": datetime.now().strftime("%H:%M:%S")})
+    tds = data.get("tds", 0)
+    state.update({
+        "lat": lat, "lng": lng, "gps_valid": gps_valid, 
+        "tds": tds,
+        "time": datetime.now().strftime("%H:%M:%S")
+    })
     
     if gps_valid and lat and not state["start_pos"]: state["start_pos"] = {"lat": lat, "lng": lng}
     if gps_valid and lat and lat != 0:
@@ -840,5 +833,4 @@ def pico_upload():
     })
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=5000)
